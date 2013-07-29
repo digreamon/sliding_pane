@@ -1,5 +1,6 @@
 package com.digreamon.android.widget;
 
+import android.graphics.Color;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
@@ -53,6 +54,7 @@ public class MainActivity extends FragmentActivity {
 		
         mSlidingPaneLayout.setLeftShadowResource(R.drawable.pane_shadow_r2l);
         mSlidingPaneLayout.setRightShadowResource(R.drawable.pane_shadow_l2r);
+        mSlidingPaneLayout.setCoveredFadeColor(Color.argb(100, 100, 100, 100));
         
         setScreen("test");
 	}

@@ -210,11 +210,16 @@ public class SlidingPaneLayout extends ViewGroup {
      */
     private float mSlideOffset;
 
-//    /**
-//     * How far the non-sliding panel is parallaxed from its usual position when open.
-//     * range [0, 1]
-//     */
-//    private float mParallaxOffset;
+    /**
+     * How far the non-sliding panel is parallaxed from its usual position when open.
+     * range [0, 1]
+     */
+    private float mParallaxOffset;
+    
+    /**
+     * Distance in pixels to parallax the fixed pane by when fully closed
+     */
+    private int mParallaxBy;
     
     /**
      * How far in pixels the slidable panel may move from Left to Right.
@@ -380,13 +385,15 @@ public class SlidingPaneLayout extends ViewGroup {
     
     private void setRevealMode(float actionDownX){
     	if(!isOpen()){
-    		mLeftView.setVisibility(GONE);
-    		mRightView.setVisibility(GONE);
-    		if(actionDownX < mFrontView.getWidth()/2){
+    		if(mLeftView!=null) mLeftView.setVisibility(GONE);
+    		if(mRightView!=null) mRightView.setVisibility(GONE);
+    		if(actionDownX < mFrontView.getWidth()/2
+    				&& mLeftView!=null){
     			mRevealMode =  REVEAL_MODE_LEFT2RIGHT;
     			mLeftView.setVisibility(VISIBLE);
     			bringChildToFront(mLeftView);
-    		} else {
+    		} else if (actionDownX > mFrontView.getWidth()/2
+    				&& mRightView!=null) {
     			mRevealMode = REVEAL_MODE_RIGHT2LEFT;
     			mRightView.setVisibility(VISIBLE);
     			bringChildToFront(mRightView);
@@ -397,6 +404,27 @@ public class SlidingPaneLayout extends ViewGroup {
     	}
     }
 
+    /**
+     * Set a distance to parallax the lower pane by when the upper pane is in its
+     * fully closed state. The lower pane will scroll between this position and
+     * its fully open state.
+     *
+     * @param parallaxBy Distance to parallax by in pixels
+     */
+    public void setParallaxDistance(int parallaxBy) {
+        mParallaxBy = parallaxBy;
+        requestLayout();
+    }
+
+    /**
+     * @return The distance the lower pane will parallax by when the upper pane is fully closed.
+     *
+     * @see #setParallaxDistance(int)
+     */
+    public int getParallaxDistance() {
+        return mParallaxBy;
+    }
+    
     public void setPanelSlideListener(PanelSlideListener listener) {
         mPanelSlideListener = listener;
     }
@@ -448,14 +476,7 @@ public class SlidingPaneLayout extends ViewGroup {
     
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-    	
-    	final int childCount = getChildCount();
-    	
-    	if (childCount != 3) {
-            throw new IllegalStateException("onMeasure: only exactly 3 child views are supported!");
-        }
-    	
-        final int widthMode = MeasureSpec.getMode(widthMeasureSpec);
+    	final int widthMode = MeasureSpec.getMode(widthMeasureSpec);
         final int widthSize = MeasureSpec.getSize(widthMeasureSpec);
         final int heightMode = MeasureSpec.getMode(heightMeasureSpec);
         final int heightSize = MeasureSpec.getSize(heightMeasureSpec);
@@ -509,6 +530,11 @@ public class SlidingPaneLayout extends ViewGroup {
         	}
         }
         
+        if(mFrontView==null && !isInEditMode()) throw new IllegalStateException(
+        		"This layout must contain a view with spec=\"front\"");
+        if(mLeftView==null&&mRightView==null&&!isInEditMode()) throw new IllegalStateException(
+        		"This layout must contain atleast one of views with spec=\"left\" or spec=\"right\"");
+        
         setMeasuredDimension(widthSize, layoutHeight);
         mIsSlidable = canSlide;
         if (mScrollState != SCROLL_STATE_IDLE && !canSlide) {
@@ -527,8 +553,8 @@ public class SlidingPaneLayout extends ViewGroup {
         mL2rSlideRange = calculateSlideRange(mLeftView, width);
         mR2lSlideRange = calculateSlideRange(mRightView, width);
         
-        setViewLayout(mLeftView, paddingLeft, paddingTop);
-        setViewLayout(mRightView, width - paddingRight - mRightView.getMeasuredWidth(), paddingTop);
+        if(mLeftView!=null) setViewLayout(mLeftView, paddingLeft, paddingTop);
+        if(mRightView!=null) setViewLayout(mRightView, width - paddingRight - mRightView.getMeasuredWidth(), paddingTop);
         setViewLayout(mFrontView, paddingLeft, paddingTop);
     }
 
@@ -574,9 +600,9 @@ public class SlidingPaneLayout extends ViewGroup {
 
                 final int pointerIndex = MotionEventCompat.findPointerIndex(ev, activePointerId);
                 final float x = MotionEventCompat.getX(ev, pointerIndex);
+                final float y = MotionEventCompat.getY(ev, pointerIndex);
                 final float dx = x - mLastMotionX;
                 final float xDiff = Math.abs(dx);
-                final float y = MotionEventCompat.getY(ev, pointerIndex);
                 final float yDiff = Math.abs(y - mLastMotionY);
 
                 if (dx != 0 && !isGutterDrag(mLastMotionX, dx) &&
@@ -594,7 +620,7 @@ public class SlidingPaneLayout extends ViewGroup {
                     mIsUnableToDrag = true;
                     return false;
                 }
-                if (mScrollState == SCROLL_STATE_DRAGGING && performDrag(x)) {
+                if (mScrollState == SCROLL_STATE_DRAGGING && performDrag(x, y)) {
                     invalidate();
                 }
                 break;
@@ -682,7 +708,8 @@ public class SlidingPaneLayout extends ViewGroup {
                     final int activePointerIndex = MotionEventCompat.findPointerIndex(
                             ev, mActivePointerId);
                     final float x = MotionEventCompat.getX(ev, activePointerIndex);
-                    needsInvalidate |= performDrag(x);
+                    final float y = MotionEventCompat.getY(ev, activePointerIndex);
+                    needsInvalidate |= performDrag(x, y);
                 }
                 break;
             }
@@ -801,8 +828,25 @@ public class SlidingPaneLayout extends ViewGroup {
     private int getSlideRange(){
     	return mRevealMode == REVEAL_MODE_LEFT2RIGHT ? mL2rSlideRange : mR2lSlideRange;
     }
+
+    private void onPanelDragged(int newLeft) {
+        final LayoutParams lp = (LayoutParams) mFrontView.getLayoutParams();
+        final int leftBound = getPaddingLeft() + lp.leftMargin;
+
+        mSlideOffset = (float) (newLeft - leftBound) / mL2rSlideRange;
+
+        if (mParallaxBy != 0) {
+            parallaxOtherViews(mSlideOffset);
+        }
+
+        if (lp.dimWhenOffset) {
+        	dimCoverView(mSlideOffset, mSliderFadeColor);
+            dimCoveredView(1-mSlideOffset, mSliderFadeColor);
+        }
+        dispatchOnPanelSlide(mFrontView);
+    }
     
-    private boolean performDrag(float x) {
+    private boolean performDrag(float x, float y) {
         final float dxMotion = x - mLastMotionX;
         mLastMotionX = x;
 
@@ -842,17 +886,35 @@ public class SlidingPaneLayout extends ViewGroup {
         mFrontView.offsetLeftAndRight(dxPane);
 
         mLastMotionX += newX - (int) newX;
-        if (lp.dimWhenOffset) {
-            dimChildView(mFrontView, mSlideOffset, mSliderFadeColor);
-        }
+        
+        dimCoverView(mSlideOffset, mSliderFadeColor);
+        dimCoveredView(1-mSlideOffset, mSliderFadeColor);
+        
+//        if(mParallaxBy!=0){
+//        	parallaxOtherViews();
+//        }
+        
         dispatchOnPanelSlide(mFrontView);
 
         return true;
     }
 
+    private void dimCoverView(float mag, int fadeColor){
+    	dimChildView(mFrontView, mag, fadeColor);
+    }
+    
+    private void dimCoveredView(float mag, int fadeColor){
+    	if(mRevealMode == REVEAL_MODE_LEFT2RIGHT){
+    		dimChildView(mLeftView, mag, fadeColor);
+    	} else {
+    		dimChildView(mRightView, mag, fadeColor);
+    	}
+    }
+    
     private void dimChildView(View v, float mag, int fadeColor) {
         final LayoutParams lp = (LayoutParams) v.getLayoutParams();
 
+        if (!lp.dimWhenOffset) return;
         if (mag > 0 && fadeColor != 0) {
             final int baseAlpha = (fadeColor & 0xff000000) >>> 24;
             int imag = (int) (baseAlpha * mag);
@@ -977,9 +1039,10 @@ public class SlidingPaneLayout extends ViewGroup {
             final int leftBound = getPaddingLeft() + lp.leftMargin;
             
             mSlideOffset = (float) (newLeft - leftBound) / getSlideRange();
-            if (lp.dimWhenOffset) {
-                dimChildView(mFrontView, Math.abs(mSlideOffset), mSliderFadeColor);
-            }
+            
+            dimCoverView(Math.abs(mSlideOffset), mSliderFadeColor);
+            dimCoveredView(1-Math.abs(mSlideOffset), mSliderFadeColor);
+            
             dispatchOnPanelSlide(mFrontView);
 
             if (mScroller.isFinished()) {
@@ -1069,26 +1132,26 @@ public class SlidingPaneLayout extends ViewGroup {
         mShadowDrawable.draw(c);
     }
     
-//    private void parallaxOtherViews(float slideOffset) {
-//        final LayoutParams slideLp = (LayoutParams) mFrontView.getLayoutParams();
-//        final boolean dimViews = slideLp.dimWhenOffset && slideLp.leftMargin <= 0;
-//        final int childCount = getChildCount();
-//        for (int i = 0; i < childCount; i++) {
-//            final View v = getChildAt(i);
-//            if (v == mFrontView) continue;
-//
-//            final int oldOffset = (int) ((1 - mParallaxOffset) * mParallaxBy);
-//            mParallaxOffset = slideOffset;
-//            final int newOffset = (int) ((1 - slideOffset) * mParallaxBy);
-//            final int dx = oldOffset - newOffset;
-//
-//            v.offsetLeftAndRight(dx);
-//
-//            if (dimViews) {
-//                dimChildView(v, 1 - mParallaxOffset, mCoveredFadeColor);
-//            }
-//        }
-//    }
+    private void parallaxOtherViews(float slideOffset) {
+        final LayoutParams slideLp = (LayoutParams) mFrontView.getLayoutParams();
+        final boolean dimViews = slideLp.dimWhenOffset && slideLp.leftMargin <= 0;
+        final int childCount = getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            final View v = getChildAt(i);
+            if (v == mFrontView) continue;
+
+            final int oldOffset = (int) ((1 - mParallaxOffset) * mParallaxBy);
+            mParallaxOffset = slideOffset;
+            final int newOffset = (int) ((1 - slideOffset) * mParallaxBy);
+            final int dx = oldOffset - newOffset;
+
+            v.offsetLeftAndRight(dx);
+
+            if (dimViews) {
+                dimChildView(v, 1 - mParallaxOffset, mCoveredFadeColor);
+            }
+        }
+    }
 
     /**
      * Tests scrollability within child views of v given a delta of dx.
@@ -1141,17 +1204,16 @@ public class SlidingPaneLayout extends ViewGroup {
     }
 
     boolean isSlideablePaneUnder(float x, float y) {
-        final View child = mFrontView;
         setRevealMode(x);
         
         boolean isByX = false;
         if(mRevealMode == REVEAL_MODE_LEFT2RIGHT){
-        	isByX = x >= child.getLeft() - mGutterSize && x < child.getLeft() + dp2px(DEFAULT_SENSE_AREA_WIDTH) + mGutterSize;
+        	isByX = mLeftView!=null && x >= mFrontView.getLeft() - mGutterSize && x < mFrontView.getLeft() + dp2px(DEFAULT_SENSE_AREA_WIDTH) + mGutterSize;
         } else {
-        	isByX = x >= child.getRight() - dp2px(DEFAULT_SENSE_AREA_WIDTH) - mGutterSize && x < child.getRight() + mGutterSize;
+        	isByX = mRightView!=null && x >= mFrontView.getRight() - dp2px(DEFAULT_SENSE_AREA_WIDTH) - mGutterSize && x < mFrontView.getRight() + mGutterSize;
         }
         
-        return child != null && isByX && y >= child.getTop() && y < child.getBottom();
+        return mFrontView != null && isByX && y >= mFrontView.getTop() && y < mFrontView.getBottom();
     }
 
     boolean isDimmed(View child) {

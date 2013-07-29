@@ -14,6 +14,7 @@
         android:choiceMode="singleChoice"
         android:background="#FFDD9999"
         mandroid:spec="left"
+        mandroid:dimWhenOffset="true"
         />
     
     <ListView
