@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="SlidingPaneLayout">
+        <attr name="spec" format="enum">
+            <enum name="front" value="0"/>
+            <enum name="left" value="1"/>
+            <enum name="right" value="2"/>
+        </attr>
+        <attr name="dimWhenOffset" format="boolean"/>
+    </declare-styleable>
+</resources>

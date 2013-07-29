@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.digreamon.android.widget.SlidingPaneLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:mandroid="http://schemas.android.com/apk/res/com.digreamon.android.widget"
+    android:id="@+id/sliding_pane_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    >
+
+	<ListView
+        android:id="@+id/left_drawer_list"
+        android:layout_width="240dp"
+        android:layout_height="match_parent"
+        android:choiceMode="singleChoice"
+        android:background="#FFDD9999"
+        mandroid:spec="left"
+        />
+    
+    <ListView
+        android:id="@+id/right_drawer_list"
+        android:layout_width="180dp"
+        android:layout_height="match_parent"
+        android:choiceMode="singleChoice"
+        android:background="#FF99DD99"
+        mandroid:spec="right"
+        />
+
+	<FrameLayout 
+        android:id="@+id/content_container"
+        android:layout_height="match_parent"
+    	android:layout_width="match_parent"
+    	android:background="#FFFFFFFF"
+    	mandroid:spec="front"
+    	mandroid:dimWhenOffset="true"
+        />	
+</com.digreamon.android.widget.SlidingPaneLayout>
