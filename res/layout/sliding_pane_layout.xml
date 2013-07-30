@@ -15,6 +15,7 @@
         android:background="#FFDD9999"
         mandroid:spec="left"
         mandroid:dimWhenOffset="true"
+        mandroid:parallaxDistance="50dp"
         />
     
     <ListView
@@ -24,6 +25,7 @@
         android:choiceMode="singleChoice"
         android:background="#FF99DD99"
         mandroid:spec="right"
+        mandroid:parallaxDistance="50dp"
         />
 
 	<FrameLayout 

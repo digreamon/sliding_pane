@@ -198,11 +198,6 @@ public class SlidingPaneLayout extends ViewGroup {
     private float mParallaxOffset;
     
     /**
-     * Distance in pixels to parallax the fixed pane by when fully closed
-     */
-    private int mParallaxBy;
-    
-    /**
      * A panel view is locked into internal scrolling or another condition that
      * is preventing a drag.
      */
@@ -387,27 +382,6 @@ public class SlidingPaneLayout extends ViewGroup {
 			invalidate();
     	}
     }
-
-    /**
-     * Set a distance to parallax the lower pane by when the upper pane is in its
-     * fully closed state. The lower pane will scroll between this position and
-     * its fully open state.
-     *
-     * @param parallaxBy Distance to parallax by in pixels
-     */
-    public void setParallaxDistance(int parallaxBy) {
-        mParallaxBy = parallaxBy;
-        requestLayout();
-    }
-
-    /**
-     * @return The distance the lower pane will parallax by when the upper pane is fully closed.
-     *
-     * @see #setParallaxDistance(int)
-     */
-    public int getParallaxDistance() {
-        return mParallaxBy;
-    }
     
     public void setPanelSlideListener(PanelSlideListener listener) {
         mPanelSlideListener = listener;
@@ -534,11 +508,11 @@ public class SlidingPaneLayout extends ViewGroup {
 				break;
 			case LEFT:
 				lp.slideRangeSpec = calculateSlideRange(child, width);
-				setViewLayout(child, paddingLeft, paddingTop);
+				setViewLayout(child, paddingLeft - lp.parallaxDistance, paddingTop);
 				break;
 			case RIGHT:
 				lp.slideRangeSpec = calculateSlideRange(child, width);
-				setViewLayout(child, width - paddingRight - child.getMeasuredWidth(), paddingTop);
+				setViewLayout(child, width - paddingRight - child.getMeasuredWidth() + lp.parallaxDistance, paddingTop);
 				break;
 			default:
 				break;
@@ -831,27 +805,9 @@ public class SlidingPaneLayout extends ViewGroup {
     }
 
     private int getSlideRange(){
-//    	return mRevealMode == REVEAL_MODE_LEFT2RIGHT ? mL2rSlideRange : mR2lSlideRange;
     	return ((LayoutParams)mCoveredView.getLayoutParams()).slideRangeSpec;
     }
 
-    private void onPanelDragged(int newLeft) {
-        final LayoutParams lp = (LayoutParams) getCoverView().getLayoutParams();
-        final int leftBound = getPaddingLeft() + lp.leftMargin;
-
-        mSlideOffset = (float) (newLeft - leftBound) / getSlideRange();
-
-        if (mParallaxBy != 0) {
-            parallaxOtherViews(mSlideOffset);
-        }
-
-        if (lp.dimWhenOffset) {
-        	dimCoverView(mSlideOffset, mSliderFadeColor);
-            dimCoveredView(1-mSlideOffset, mSliderFadeColor);
-        }
-        dispatchOnPanelSlide(getCoverView());
-    }
-    
     private boolean performDrag(float x, float y) {
         final float dxMotion = x - mLastMotionX;
         mLastMotionX = x;
@@ -901,9 +857,7 @@ public class SlidingPaneLayout extends ViewGroup {
         dimCoverView(mSlideOffset, mSliderFadeColor);
         dimCoveredView(1-mSlideOffset, mSliderFadeColor);
         
-//        if(mParallaxBy!=0){
-//        	parallaxOtherViews();
-//        }
+        parallaxCoveredView(mSlideOffset);
         
         dispatchOnPanelSlide(getCoverView());
 
@@ -1049,8 +1003,11 @@ public class SlidingPaneLayout extends ViewGroup {
             
             mSlideOffset = (float) (newLeft - leftBound) / getSlideRange();
             
-            dimCoverView(Math.abs(mSlideOffset), mSliderFadeColor);
-            dimCoveredView(1-Math.abs(mSlideOffset), mSliderFadeColor);
+            final float offset = Math.abs(mSlideOffset);
+            dimCoverView(offset, mSliderFadeColor);
+            dimCoveredView(1-offset, mSliderFadeColor);
+            
+            parallaxCoveredView(offset);
             
             dispatchOnPanelSlide(getCoverView());
 
@@ -1158,25 +1115,24 @@ public class SlidingPaneLayout extends ViewGroup {
         mShadowDrawable.draw(c);
     }
     
-    private void parallaxOtherViews(float slideOffset) {
-        final LayoutParams slideLp = (LayoutParams) getCoverView().getLayoutParams();
-        final boolean dimViews = slideLp.dimWhenOffset && slideLp.leftMargin <= 0;
-        final int childCount = getChildCount();
-        for (int i = 0; i < childCount; i++) {
-            final View v = getChildAt(i);
-            if (v == getCoverView()) continue;
-
-            final int oldOffset = (int) ((1 - mParallaxOffset) * mParallaxBy);
-            mParallaxOffset = slideOffset;
-            final int newOffset = (int) ((1 - slideOffset) * mParallaxBy);
-            final int dx = oldOffset - newOffset;
-
-            v.offsetLeftAndRight(dx);
-
-            if (dimViews) {
-                dimChildView(v, 1 - mParallaxOffset, mCoveredFadeColor);
-            }
+    private void parallaxCoveredView(float slideOffset) {
+    	final int parallaxDistance = ((LayoutParams)mCoveredView.getLayoutParams()).parallaxDistance;
+        if(parallaxDistance == 0) return;
+        final int oldOffset = (int) ((1 - mParallaxOffset) * parallaxDistance);
+        mParallaxOffset = slideOffset;
+        final int newOffset = (int) ((1 - slideOffset) * parallaxDistance);
+        int dx = 0;
+        switch (getViewSpec(mCoveredView)) {
+		case LEFT:
+			dx = oldOffset - newOffset;
+			break;
+		case RIGHT:
+			dx = newOffset - oldOffset;
+			break;
+		default:
+			break;
         }
+        mCoveredView.offsetLeftAndRight(dx);
     }
 
     /**
@@ -1324,7 +1280,8 @@ public class SlidingPaneLayout extends ViewGroup {
         private static final int[] ATTRS = new int[] {
             android.R.attr.layout_weight,
             R.attr.spec,
-            R.attr.dimWhenOffset
+            R.attr.dimWhenOffset,
+            R.attr.parallaxDistance
         };
 
         /**
@@ -1347,6 +1304,11 @@ public class SlidingPaneLayout extends ViewGroup {
          * when it's been offset from its default position.
          */
         boolean dimWhenOffset;
+        
+        /**
+         * This is the parallax distance of the covered view relatively to cover view.  
+         */
+        int parallaxDistance = 0;
 
         Paint dimPaint;
         
@@ -1384,6 +1346,7 @@ public class SlidingPaneLayout extends ViewGroup {
             this.weight = a.getFloat(0, 0);
             this.spec = Spec.getSpec(a.getInteger(1, Spec.FRONT.getVal()));
             this.dimWhenOffset = a.getBoolean(2, false);
+            this.parallaxDistance = a.getDimensionPixelSize(3, 0);
             a.recycle();
         }
 
